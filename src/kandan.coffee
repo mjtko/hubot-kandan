@@ -23,23 +23,30 @@ class Kandan extends Adapter
       port:     process.env.HUBOT_KANDAN_PORT || 80
       token:    process.env.HUBOT_KANDAN_TOKEN
 
-    @bot = new KandanStreaming(options, @robot)
+    @bot = new KandanStreaming(options, @robot, @)
     callback = (myself) =>
       @bot.on "TextMessage", (message) =>
         unless myself.id == message.user.id
-          message.user.room = message.channel
-          @receive new TextMessage(message.user, message.content)
+          messageUser = @userForKandanUser(message.user)
+          messageUser.room = message.channel
+          @receive new TextMessage(messageUser, message.content)
       @emit "connected"
     errback = (response) =>
       throw new Error "Unable to determine profile information."
 
     @bot.Me callback, errback
 
+  userForKandanUser: (user) ->
+    @userForId user.email,
+      name: user.username
+      email_address: user.email
+      kandanData: user
+
 exports.use = (robot) ->
   new Kandan robot
 
 class KandanStreaming extends EventEmitter
-  constructor: (options, robot) ->
+  constructor: (options, robot, adapter) ->
     @eventProcessors = {
       user: {}
       channel: {
@@ -58,6 +65,7 @@ class KandanStreaming extends EventEmitter
     @token    = options.token
 
     @logger = robot.logger
+    @adapter = adapter
 
     target = "http://#{ @host }:#{ @port }/remote/faye"
     robot.logger.info("Connecting to #{ target }")
@@ -79,19 +87,32 @@ class KandanStreaming extends EventEmitter
       robot.logger.error "Disconnected from Faye server"
 
     @subscribeEvents()
+    @subscribeChannels()
+    robot.brain.on 'loaded', @syncUsers
+    @
+
+  warner: (message) ->
+    (err) => @logger.warn "#{message} #{if err then "(#{err})"}"
+
+  syncUsers: =>
+    return if @_synced == true
+    callback = (users) =>
+      @_synced = true
+      @adapter.userForKandanUser(user) for user in users
+    @Users callback, @warner("Error retrieving users; unable to synchronize user list")
+
+  subscribeChannels: ->
     # Always subscribe to the primary channel
     @subscribe(1)
     # Subscribe to all the other channels
     callback = (channels) =>
       for channel in channels
         @subscribe(channel.id) unless channel.id == 1
-    errback = (err) =>
-      @logger.warn "Error retrieving channels list; will only listen on primary channel"
-    @Channels callback, errback
-    @
+    @Channels callback, @warner("Error retrieving channels list; will only listen on primary channel")
 
   subscribeEvents: ->
     @client.subscribe "/app/activities", (data) =>
+      @logger.debug "Had events: #{JSON.stringify(data)}"
       [entityName, eventName] = data.event.split("#")
       @eventProcessors[entityName]?[eventName]?(data)
 
@@ -127,12 +148,14 @@ class KandanStreaming extends EventEmitter
   Channels: (callback, errback) ->
     @get "/channels", callback, errback
 
-  # Needs to be implemented in Kandan
   User: (id, callback, errback) ->
-    @get "/active_users.json", callback, errback
+    @get "/users/#{id}", callback, errback
+
+  Users: (callback, errback) ->
+    @get "/users", callback, errback
 
   Me: (callback, errback) ->
-    @get "/me", callback, errback
+    @get "/users/me", callback, errback
 
   Channel: (id) =>
     logger = @logger
@@ -197,6 +220,7 @@ class KandanStreaming extends EventEmitter
           try
             callback JSON.parse(data) if callback?
           catch err
+            console.log err
             errback(err) if errback?
 
     if method is "POST" || method is "PUT"
