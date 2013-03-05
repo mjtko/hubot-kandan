@@ -37,12 +37,16 @@ class Kandan extends Adapter
     @bot.Me callback, errback
 
   userForKandanUser: (user) ->
-    @userForId user.email,
-      name: user.username
+    u = @userForId user.email, {
       email_address: user.email
-      kandan: {
-        user: user
-      }
+    }
+    # Note: Kandan values trump other adapters if brain is shared
+    u.name = user.first_name + ' ' + user.last_name
+    u.user = user.username
+    u.kandan ?= {
+      user: user
+    }
+    u
 
 exports.use = (robot) ->
   new Kandan robot
