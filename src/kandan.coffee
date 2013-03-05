@@ -12,10 +12,15 @@ Faye         = require('faye')
 
 class Kandan extends Adapter
 
+  reply: (envelope, strings...) -> @send(envelope, strings...)
+
   send: (envelope, strings...) ->
     if strings.length > 0
       callback = errback = (response) => @send envelope, strings...
-      @bot.message strings.shift(), envelope.kandan?.channel?.id || 1, callback, errback
+      @bot.message strings.shift(), @roomFor(envelope), callback, errback
+
+  roomFor: (envelope) ->
+    envelope.kandan?.channel?.id || envelope.room?.kandanId || envelope.room || 1
 
   run: ->
     options =
@@ -41,8 +46,9 @@ class Kandan extends Adapter
       email_address: user.email
     }
     # Note: Kandan values trump other adapters if brain is shared
-    u.name = user.first_name + ' ' + user.last_name
+    u.name = user.username
     u.user = user.username
+    u.fullName = user.first_name + ' ' + user.last_name
     u.kandan ?= {
       user: user
     }
