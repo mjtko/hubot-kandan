@@ -20,7 +20,7 @@ class Kandan extends Adapter
       @bot.message strings.shift(), @roomFor(envelope), callback, errback
 
   roomFor: (envelope) ->
-    envelope.kandan?.channel?.id || envelope.room?.kandanId || envelope.room || 1
+    envelope.user.kandan?.channel?.id || envelope.room || 1
 
   run: ->
     options =
@@ -32,9 +32,9 @@ class Kandan extends Adapter
     callback = (myself) =>
       @bot.on "TextMessage", (message) =>
         unless myself.id == message.user.id
-          envelope = @userForKandanUser(message.user)
-          envelope.kandan.channel = message.channel
-          @receive new TextMessage(envelope, message.content)
+          user = @userForKandanUser(message.user)
+          user.kandan.channel = message.channel
+          @receive new TextMessage(user, message.content)
       @emit "connected"
     errback = (response) =>
       throw new Error "Unable to determine profile information."
